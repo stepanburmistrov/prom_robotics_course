@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="420" viewBox="0 0 980 420">
+  <style>
+    .board { fill:#1f6fb2; stroke:#0e4e83; stroke-width:2; }
+    .label { font-family: monospace; font-size:14px; fill:#111; }
+    .pin { stroke:#333; stroke-width:2; }
+    .wire { stroke-width:3; fill:none; }
+  </style>
+  <!-- Arduino block -->
+  <rect class="board" x="20" y="40" width="280" height="340" rx="18"/>
+  <text class="label" x="110" y="65">Arduino UNO</text>
+  <!-- Digital pins area label -->
+  <text class="label" x="40" y="95">D2 D3 D4 D5 D6 D9</text>
+
+  <!-- Breadboard block -->
+  <rect x="340" y="40" width="610" height="340" rx="8" fill="#eee" stroke="#bbb"/>
+  <text class="label" x="345" y="60">Breadboard (упрощенная)</text>
+
+  <!-- LEDs -->
+  <circle cx="420" cy="140" r="10" fill="red" stroke="#700"/>
+  <text class="label" x="440" y="145">LED RED (D2 → резистор → GND)</text>
+
+  <circle cx="420" cy="190" r="10" fill="gold" stroke="#aa8800"/>
+  <text class="label" x="440" y="195">LED YELLOW (D3 → резистор → GND)</text>
+
+  <circle cx="420" cy="240" r="10" fill="green" stroke="#063"/>
+  <text class="label" x="440" y="245">LED GREEN (D4 → резистор → GND)</text>
+
+  <!-- Buttons -->
+  <rect x="420" y="290" width="22" height="22" rx="4" fill="#ccc" stroke="#888"/>
+  <text class="label" x="450" y="305">BTN1 (D5 ↔ GND, INPUT_PULLUP)</text>
+
+  <rect x="700" y="290" width="22" height="22" rx="4" fill="#ccc" stroke="#888"/>
+  <text class="label" x="730" y="305">BTN2 (D6 ↔ GND, INPUT_PULLUP)</text>
+
+  <!-- PWM LED -->
+  <circle cx="700" cy="140" r="10" fill="#aaa" stroke="#555"/>
+  <text class="label" x="720" y="145">LED PWM (D9 → резистор → GND)</text>
+
+  <!-- Ground & VCC rails -->
+  <line x1="360" y1="360" x2="920" y2="360" stroke="#c00" stroke-width="3"/>
+  <text class="label" x="360" y="355">+5V (для справки, здесь не используется при INPUT_PULLUP)</text>
+  <line x1="360" y1="380" x2="920" y2="380" stroke="#000" stroke-width="3"/>
+  <text class="label" x="360" y="400">GND шина</text>
+
+  <!-- Wires (schematic, not to scale) -->
+  <path class="wire" d="M140,120 C200,120 360,140 360,140" stroke="red"/>
+  <path class="wire" d="M160,140 C220,140 360,190 360,190" stroke="gold"/>
+  <path class="wire" d="M180,160 C240,160 360,240 360,240" stroke="green"/>
+  <path class="wire" d="M200,180 C240,220 360,300 420,300" stroke="#0080ff"/>
+  <path class="wire" d="M215,195 C260,240 520,300 700,300" stroke="#00a070"/>
+  <path class="wire" d="M220,210 C260,110 660,140 690,140" stroke="#555"/>
+</svg>
