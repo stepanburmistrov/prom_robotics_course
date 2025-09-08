@@ -1,150 +1,204 @@
-
 /*
-  Lesson 2: C++. Button. Non‑blocking code with millis().
-  Short press: cycle blink modes (FAST → SLOW → ALL).
-  Long press (>= 3000 ms): immediately switch to OFF (all LEDs off).
-  Next any press returns to the last working mode.
-  Debounce: edge detection with a time guard.
-  Serial is used for debugging.
+  Урок 2. Переключение режимов.
+  ─────────────────────────────────────────────────────────
+  Что должно уметь:
+  1) Короткое нажатие (реакция СРАЗУ) — переключаем режимы по кругу:
+     FAST → SLOW → ALL → FAST.
+  2) Длинное нажатие (≥ 3 секунды, срабатывание по таймеру во время удержания)
+     — выключаем всё (OFF). Любое следующее нажатие возвращает назад в работу.
+  3) Код неблокирующий: НИКАКИХ delay(), только проверки времени через millis().
+  4) Отладка через Serial Monitor (115200 бод).
 
-  Wiring (UNO):
-    LEDs: D2 (RED), D3 (YELLOW), D4 (GREEN) — through 220–330 Ω to GND.
-    Button1: D5 ↔ GND (INPUT_PULLUP).
+  Подключение (Arduino UNO):
+    D2 — красный светодиод → резистор → GND
+    D3 — жёлтый светодиод → резистор → GND
+    D4 — зелёный светодиод → резистор → GND
+    D5 — кнопка ↔ GND (режим INPUT_PULLUP в коде)
 
-  Author: your course
+  Почему INPUT_PULLUP?
+    Включаем внутренний подтягивающий резистор к +5 В.
+    Логика получается инвертированной:
+      не нажато = HIGH (1), нажато = LOW (0).
 */
-#include <Arduino.h>
 
-// ---------------- Pins
-const uint8_t LEDS[] = {2, 3, 4};   // RED, YELLOW, GREEN
-const uint8_t BTN1   = 5;           // single button
 
-// ---------------- Modes
-enum Mode : uint8_t { MODE_FAST = 0, MODE_SLOW, MODE_ALL, MODE_OFF };
-const char* modeName(Mode m) {
-  switch (m) {
-    case MODE_FAST: return "FAST (sequential)";
-    case MODE_SLOW: return "SLOW (sequential)";
-    case MODE_ALL:  return "ALL (sync blink)";
-    case MODE_OFF:  return "OFF";
+/* ------------------------ Пины ------------------------ */
+const byte LED_R = 2;
+const byte LED_Y = 3;
+const byte LED_G = 4;
+const byte BTN1  = 5;
+
+// Список “в какие порты подключены наши три светодиода”.
+// Так удобнее по очереди включать их по индексу 0..2.
+const byte LEDS[3] = { LED_R, LED_Y, LED_G };
+
+/* ---------------------- Режимы ------------------------ */
+
+// 0 — быстрое последовательное мигание,
+// 1 — медленное последовательное,
+// 2 — все вместе,
+// 3 — выкл.
+const byte MODE_FAST = 0;
+const byte MODE_SLOW = 1;
+const byte MODE_ALL  = 2;
+const byte MODE_OFF  = 3;
+
+byte currentMode  = MODE_FAST;   // какой режим сейчас
+byte lastWorkMode = MODE_FAST;   // последний рабочий (не OFF), чтобы вернуться после OFF
+
+/* ---------------------- Тайминги ---------------------- */
+unsigned long lastStepMs = 0;        // когда в последний раз что-то мига́ли
+const unsigned long FAST_STEP = 100; // мс между переключениями в FAST
+const unsigned long SLOW_STEP = 400; // мс между переключениями в SLOW
+const unsigned long ALL_STEP  = 250; // мс между переключениями в ALL
+
+byte idx = 0;                        // индекс текущего светодиода в последовательности 0..2
+
+/* --------------- Кнопка + антидребезг ---------------- */
+bool          btnStable       = HIGH;   // “стабильное” состояние (после фильтра)
+bool          btnPrevStable   = HIGH;   // предыдущее стабильное
+unsigned long btnLastChangeMs = 0;      // когда оно менялось в последний раз
+const unsigned long DEBOUNCE  = 15;     // фильтр дребезга кнопки, мс
+
+bool          isLockedOff     = false;  // OFF “залочен” длинным нажатием
+unsigned long pressStartMs    = 0;      // когда нажали (начали удерживать)
+bool          longTriggered   = false;  // длинное уже сработало (чтобы не повторялось)
+
+/* ----------------- Вспомогательные вещи --------------- */
+
+// Погасить/зажечь сразу все светодиоды одним значением (LOW или HIGH)
+void setAll(byte state) {
+  for (byte i = 0; i < 3; i++) {
+    digitalWrite(LEDS[i], state);
   }
+}
+
+// Название режима (для печати в Serial Monitor)
+const char* modeName(byte m) {
+  if (m == MODE_FAST) return "FAST (sequential)";
+  if (m == MODE_SLOW) return "SLOW (sequential)";
+  if (m == MODE_ALL)  return "ALL (sync blink)";
+  if (m == MODE_OFF)  return "OFF";
   return "?";
 }
 
-Mode  currentMode = MODE_FAST;
-Mode  lastWorkMode = MODE_FAST;      // to restore after MODE_OFF
+// Переключить режим (и красиво всё обнулить)
+void switchToMode(byte newMode) {
+  if (newMode != MODE_OFF) {
+    lastWorkMode = newMode;  // запомним последний “рабочий” режим
+  }
 
-// ---------------- Timing
-unsigned long lastStepMs = 0;
-const unsigned long FAST_STEP = 100;
-const unsigned long SLOW_STEP = 400;
-const unsigned long ALL_STEP  = 250;
+  currentMode = newMode;
 
-// sequence index
-uint8_t idx = 0;
-
-// ---------------- Button handling (debounce + long press)
-bool          btnStable       = HIGH; // INPUT_PULLUP idle = HIGH
-bool          btnPrevStable   = HIGH;
-unsigned long btnLastChangeMs = 0;
-const unsigned long DEBOUNCE  = 15;
-
-bool          isLockedOff     = false;      // set by long press
-unsigned long pressStartMs    = 0;
-bool          longTriggered   = false;
-
-// helper
-void setAll(uint8_t state) {
-  for (uint8_t i = 0; i < 3; ++i) digitalWrite(LEDS[i], state);
-}
-
-void switchToMode(Mode m) {
-  if (m != MODE_OFF) lastWorkMode = m;
-  currentMode = m;
+  // Сообщим в монитор порта, что происходит — так удобнее отлаживать
   Serial.print("Mode => ");
   Serial.println(modeName(currentMode));
 
-  // reset sequence state
+  // Сбросим “таймер шага” и индекс последовательности
   lastStepMs = millis();
   idx = 0;
-  if (currentMode == MODE_OFF) setAll(LOW);
+
+  // Если OFF — сразу гасим все светодиоды
+  if (currentMode == MODE_OFF) {
+    setAll(LOW);
+  }
 }
 
+/* ----------------- Обработка кнопки ------------------- */
 void handleButton() {
-  // read and debounce
+  // “Сырое” чтение пина
   bool raw = digitalRead(BTN1);
   unsigned long now = millis();
+
+  // Антидребезг: состояние считается изменившимся, только если прошло DEBOUNCE мс
   if (raw != btnStable && (now - btnLastChangeMs) > DEBOUNCE) {
     btnPrevStable   = btnStable;
     btnStable       = raw;
     btnLastChangeMs = now;
 
-    // Edge: pressed (HIGH -> LOW)
+    // Поймали момент НАЖАТИЯ (HIGH -> LOW) — реагируем СРАЗУ
     if (btnPrevStable == HIGH && btnStable == LOW) {
-      pressStartMs  = now;
-      longTriggered = false;
+      pressStartMs  = now;   // запомнили, когда начали удерживать
+      longTriggered = false; // длинное ещё не отработало
 
       if (!isLockedOff) {
-        // "Immediate" reaction to a short press: cycle mode right away
+        // Короткое нажатие: переключаем режимы по кругу
         if      (currentMode == MODE_FAST) switchToMode(MODE_SLOW);
         else if (currentMode == MODE_SLOW) switchToMode(MODE_ALL);
         else if (currentMode == MODE_ALL)  switchToMode(MODE_FAST);
         else if (currentMode == MODE_OFF)  switchToMode(lastWorkMode);
       } else {
-        // If OFF was locked, any press returns to last working mode
+        // Из “залоченного OFF” выходим любым нажатием
         isLockedOff = false;
         switchToMode(lastWorkMode);
       }
     }
   }
 
-  // Long press timer (do not wait for release)
+  // Длинное нажатие: если кнопку держат НИЖНЕЙ (LOW) ≥ 3000 мс, срабатываем
   if (btnStable == LOW) {
     unsigned long held = now - pressStartMs;
     if (!longTriggered && held >= 3000) {
-      longTriggered = true;
-      isLockedOff   = true;
+      longTriggered = true;   // чтобы не сработало дважды, пока держим
+      isLockedOff   = true;   // OFF теперь “залочен”
       switchToMode(MODE_OFF);
-      Serial.println("Long press >=3s → MODE_OFF");
+      Serial.println("Long press >= 3s → MODE_OFF");
     }
   }
 }
 
+/* ---------------- Логика мигания светодиодов ---------- */
 void doBlinkLogic() {
+  if (currentMode == MODE_OFF) return;  // в OFF ничего не делаем
+
   unsigned long now = millis();
 
-  if (currentMode == MODE_OFF) return;
-
   if (currentMode == MODE_FAST || currentMode == MODE_SLOW) {
+    // Для последовательности берём нужный интервал
     unsigned long step = (currentMode == MODE_FAST) ? FAST_STEP : SLOW_STEP;
+
+    // “Пришло ли время?” — главный неблокирующий приём
     if (now - lastStepMs >= step) {
       lastStepMs = now;
-      // turn all off, then current on
+
+      // Гасим всё и включаем один нужный светодиод по индексу
       setAll(LOW);
       digitalWrite(LEDS[idx], HIGH);
+
+      // Следующий индекс (0→1→2→0→…)
       idx = (idx + 1) % 3;
     }
-  } else if (currentMode == MODE_ALL) {
+  }
+  else if (currentMode == MODE_ALL) {
+    // Все вместе моргают с периодом ALL_STEP
     if (now - lastStepMs >= ALL_STEP) {
       lastStepMs = now;
-      // toggle all together
-      static bool on = false;
+      static bool on = false;  // “состояние мигания”: был OFF — станет ON и наоборот
       on = !on;
-      for (uint8_t i = 0; i < 3; ++i) digitalWrite(LEDS[i], on ? HIGH : LOW);
+
+      for (byte i = 0; i < 3; i++) {
+        digitalWrite(LEDS[i], on ? HIGH : LOW);
+      }
     }
   }
 }
 
+/* -------------------- Стандартные setup/loop ---------- */
 void setup() {
-  Serial.begin(115200);
-  for (uint8_t i = 0; i < 3; ++i) pinMode(LEDS[i], OUTPUT);
-  pinMode(BTN1, INPUT_PULLUP);
-  setAll(LOW);
-  switchToMode(currentMode);
-  Serial.println("Lesson 2: modes_button_longpress started");
+  Serial.begin(115200);  // открой Serial Monitor на той же скорости
+
+  // Настроим пины
+  pinMode(LED_R, OUTPUT);
+  pinMode(LED_Y, OUTPUT);
+  pinMode(LED_G, OUTPUT);
+  pinMode(BTN1, INPUT_PULLUP);  // включили внутреннюю подтяжку
+
+  setAll(LOW);                  // на старте — всё погашено
+  switchToMode(currentMode);    // включаем стартовый режим
+  Serial.println("Lesson 2: simple version started");
 }
 
 void loop() {
-  handleButton();
-  doBlinkLogic();
+  handleButton();   // читаем кнопку (антидребезг, короткое/длинное)
+  doBlinkLogic();   // мигаем в зависимости от режима
 }
