@@ -49,7 +49,7 @@ byte lastWorkMode = MODE_FAST;   // последний рабочий (не OFF)
 /* ---------------------- Тайминги ---------------------- */
 unsigned long lastStepMs = 0;        // когда в последний раз что-то мига́ли
 const unsigned long FAST_STEP = 100; // мс между переключениями в FAST
-const unsigned long SLOW_STEP = 400; // мс между переключениями в SLOW
+const unsigned long SLOW_STEP = 500; // мс между переключениями в SLOW
 const unsigned long ALL_STEP  = 250; // мс между переключениями в ALL
 
 byte idx = 0;                        // индекс текущего светодиода в последовательности 0..2
@@ -195,7 +195,7 @@ void setup() {
 
   setAll(LOW);                  // на старте — всё погашено
   switchToMode(currentMode);    // включаем стартовый режим
-  Serial.println("Lesson 2: simple version started");
+  Serial.println("Lesson 2");
 }
 
 void loop() {
