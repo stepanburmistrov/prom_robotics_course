@@ -52,7 +52,7 @@ lessonNN/                  # папка урока N (двузначный но�
   * **V4** — финал: три независимых мигания + кнопка (`INPUT_PULLUP`):  
     [`lesson01/sketches/04_multi_blink_button/04_multi_blink_button.ino`](lesson01/sketches/04_multi_blink_button/04_multi_blink_button.ino)
 
-
+---
 ### Урок 02 — Кнопка, `millis()`, антидребезг и режимы
 
 * Документация: [`lesson02/README.md`](lesson02/README.md)
@@ -61,8 +61,23 @@ lessonNN/                  # папка урока N (двузначный но�
   * **V1** — неблокирующая последовательность — [`lesson02/sketches/01_sequence/01_sequence.ino`](lesson02/sketches/01_sequence/01_sequence.ino)
   * **V2** — короткое/длинное нажатие — [`lesson02/sketches/02_long_short_press/02_long_short_press.ino`](lesson02/sketches/02_long_short_press/02_long_short_press.ino)
   * **V3** — режимы мигания — [`lesson02/sketches/03_modes/03_modes.ino`](lesson02/sketches/03_modes/03_modes.ino)
-  * **V4** — «про»-уровень (залоченный OFF) — [`lesson02/sketches/04_modes_button_longpress/04_modes_button_longpress.ino`](lesson02/sketches/04_modes_button_longpress/04_modes_button_longpress.ino)
+  * **V4** — Короткое и длинное нажатие — [`lesson02/sketches/04_modes_button_longpress/04_modes_button_longpress.ino`](lesson02/sketches/04_modes_button_longpress/04_modes_button_longpress.ino)
 
+---
+### Урок 03 — Serial (UART): логирование, команды, Plotter
+
+* Документация: [`lesson03/README.md`](lesson03/README.md)
+* Скетчи:
+  * **V1** — логи событий: запуск, нажатие/отпускание кнопки:  
+    [`lesson03/sketches/01_serial_events/01_serial_events.ino`](lesson03/sketches/01_serial_events/01_serial_events.ino)
+  * **V2** — читаем число (номер пина), переключаем светодиод; кнопка управляет тем же пином:  
+    [`lesson03/sketches/02_serial_pin_toggle/02_serial_pin_toggle.ino`](lesson03/sketches/02_serial_pin_toggle/02_serial_pin_toggle.ino)
+  * **V3** — парсим два числа `<pin> <state>`; проверка 0/1 с ошибкой:  
+    [`lesson03/sketches/03_serial_set_pin_state/03_serial_set_pin_state.ino`](lesson03/sketches/03_serial_set_pin_state/03_serial_set_pin_state.ino)
+  * **V4** — форматированный вывод и команда `STATUS` (состояние D2/D3/D4):  
+    [`lesson03/sketches/04_serial_status_formatting/04_serial_status_formatting.ino`](lesson03/sketches/04_serial_status_formatting/04_serial_status_formatting.ino)
+  * **V5** — аналоговый порт и Serial Plotter (потенциометр на A0):  
+    [`lesson03/sketches/05_analog_plotter/05_analog_plotter.ino`](lesson03/sketches/05_analog_plotter/05_analog_plotter.ino)
 
 
 
