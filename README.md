@@ -39,7 +39,18 @@ lessonNN/                  # папка урока N (двузначный но�
 * задания на доработку,
 * контрольные вопросы
 
+### Урок 01 — Основные понятия, светодиод, кнопка, `millis()`
 
+* Документация: [`lesson01/README.md`](lesson01/README.md)
+* Скетчи:
+  * **V1** — мигание одним светодиодом (с `delay()`):  
+    [`lesson01/sketches/01_blink_delay/01_blink_delay.ino`](lesson01/sketches/01_blink_delay/01_blink_delay.ino)
+  * **V2** — кнопка: «нажал — горит, отпустил — погас» (`INPUT_PULLUP`):  
+    [`lesson01/sketches/02_button_hold/02_button_hold.ino`](lesson01/sketches/02_button_hold/02_button_hold.ino)
+  * **V3** — мигание без `delay()` на `millis()`:  
+    [`lesson01/sketches/03_blink_millis/03_blink_millis.ino`](lesson01/sketches/03_blink_millis/03_blink_millis.ino)
+  * **V4** — финал: три независимых мигания + кнопка (`INPUT_PULLUP`):  
+    [`lesson01/sketches/04_multi_blink_button/04_multi_blink_button.ino`](lesson01/sketches/04_multi_blink_button/04_multi_blink_button.ino)
 
 
 ### Урок 02 — Кнопка, `millis()`, антидребезг и режимы
@@ -51,7 +62,7 @@ lessonNN/                  # папка урока N (двузначный но�
   * **V2** — короткое/длинное нажатие — [`lesson02/sketches/02_long_short_press/02_long_short_press.ino`](lesson02/sketches/02_long_short_press/02_long_short_press.ino)
   * **V3** — режимы мигания — [`lesson02/sketches/03_modes/03_modes.ino`](lesson02/sketches/03_modes/03_modes.ino)
   * **V4** — «про»-уровень (залоченный OFF) — [`lesson02/sketches/04_modes_button_longpress/04_modes_button_longpress.ino`](lesson02/sketches/04_modes_button_longpress/04_modes_button_longpress.ino)
-* Время: **\~4 часа** (с практикой и разбором)
+
 
 
 
