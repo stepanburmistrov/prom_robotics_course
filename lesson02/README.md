@@ -13,10 +13,10 @@
 
 ## Ссылки на скетчи:
 
-* **V1** — неблокирующая последовательность: [`sketches/01_sequence_no_delay/sequence_no_delay.ino`](sketches/01_sequence_no_delay/sequence_no_delay.ino)
-* **V2** — короткое/длинное нажатие: [`sketches/02_button_short_long/button_short_long.ino`](sketches/02_button_short_long/button_short_long.ino)
-* **V3** — режимы мигания: [`sketches/03_modes_tinkercad_friendly/modes_tinkercad.ino`](sketches/03_modes_tinkercad_friendly/modes_tinkercad.ino)
-* **V4** — «про»-уровень (залоченный OFF, мгновенная реакция): [`sketches/04_modes_pro/modes_pro.ino`](sketches/04_modes_pro/modes_pro.ino)
+* **V1** — неблокирующая последовательность: [`lesson02\sketches\01_sequence\01_sequence.ino`](lesson02\sketches\01_sequence\01_sequence.ino)
+* **V2** — короткое/длинное нажатие: [`lesson02\sketches\02_long_short_press\02_long_short_press.ino`](lesson02\sketches\02_long_short_press\02_long_short_press.ino)
+* **V3** — режимы мигания: [`lesson02\sketches\03_modes\03_modes.ino`](lesson02\sketches\03_modes\03_modes.ino)
+* **V4** — «про»-уровень (залоченный OFF, мгновенная реакция): [`lesson02\sketches\04_modes_button_longpress\04_modes_button_longpress.ino`](lesson02\sketches\04_modes_button_longpress\04_modes_button_longpress.ino)
 
 ---
 
