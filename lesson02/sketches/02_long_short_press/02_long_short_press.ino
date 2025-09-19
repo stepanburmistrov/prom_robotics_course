@@ -1,48 +1,84 @@
-const byte LEDS[3] = {2,3,4};
-const byte BTN = 5;
+// V2: кнопка + короткое/длинное, единый стиль
+#define LED_R 2
+#define LED_Y 3
+#define LED_G 4
+#define BTN   5
 
-enum Mode {OFF=0, ON=1, BLINK=2};
-Mode mode = OFF;
+byte LEDS[3] = { LED_R, LED_Y, LED_G };
 
-const unsigned long DEBOUNCE=15, LONG_MS=3000, BLINK_STEP=250;
-unsigned long btnLastChange=0, pressStart=0, lastBlink=0;
-bool btnStable=HIGH, btnPrevStable=HIGH, longFired=false;
+// Режимы
+#define MODE_OFF   0
+#define MODE_ON    1
+#define MODE_BLINK 2
+byte mode = MODE_OFF;
 
-void setAll(byte s){ for(byte i=0;i<3;i++) digitalWrite(LEDS[i], s); }
+// Тайминги
+unsigned long tDebounce  = 0;   // для антидребезга
+unsigned long tPressStart= 0;   // момент нажатия
+unsigned long tBlink     = 0;   // для мигания в BLINK
 
-void setup(){
-  for(byte i=0;i<3;i++){ pinMode(LEDS[i],OUTPUT); digitalWrite(LEDS[i],LOW); }
-  pinMode(BTN, INPUT_PULLUP);
-  Serial.begin(115200);
-  Serial.println("V2: short=toggle, long=blink all");
+unsigned long DEBOUNCE_MS = 20;   // устойчивое срабатывание
+unsigned long LONG_MS     = 3000; // порог длинного
+unsigned long BLINK_STEP  = 250;  // период мигания
+
+// Состояния кнопки (стабильные после антидребезга)
+byte btnStable    = 1;  // 1 = не нажато (INPUT_PULLUP)
+byte btnPrevStable= 1;
+byte longFired    = 0;
+
+void setAll(byte s) {
+  for (byte i = 0; i < 3; i++) digitalWrite(LEDS[i], s);
 }
 
-void loop(){
-  unsigned long now=millis();
-  // --- debounce ---
-  bool raw=digitalRead(BTN);
-  if(raw!=btnStable && (now-btnLastChange)>DEBOUNCE){
-    btnPrevStable=btnStable; btnStable=raw; btnLastChange=now;
+void setup() {
+  for (byte i = 0; i < 3; i++) { pinMode(LEDS[i], OUTPUT); digitalWrite(LEDS[i], 0); }
+  pinMode(BTN, INPUT_PULLUP);
+}
 
-    if(btnPrevStable==HIGH && btnStable==LOW){ // press
-      pressStart=now; longFired=false;
+void loop() {
+  unsigned long now = millis();
+
+  // --- антидребезг на фронты ---
+  byte raw = digitalRead(BTN); // 1 = не нажато, 0 = нажато
+  if (raw != btnStable and (now - tDebounce) > DEBOUNCE_MS) {
+    btnPrevStable = btnStable;
+    btnStable = raw;
+    tDebounce = now;
+
+    // фронт "нажатия"
+    if (btnPrevStable == 1 and btnStable == 0) {
+      tPressStart = now;
+      longFired = 0;
     }
-    if(btnPrevStable==LOW && btnStable==HIGH){ // release
-      if(!longFired){ // short
-        mode = (mode==OFF)? ON : OFF;
-        Serial.println(mode==ON? "ON" : "OFF");
+
+    // фронт "отпускания"
+    if (btnPrevStable == 0 and btnStable == 1) {
+      if (!longFired) {
+        // короткое нажатие: OFF <-> ON
+        if (mode == MODE_OFF) mode = MODE_ON;
+        else if (mode == MODE_ON) mode = MODE_OFF;
+        else if (mode == MODE_BLINK) mode = MODE_OFF;
       }
     }
   }
-  // long press while holding
-  if(btnStable==LOW && !longFired && (now-pressStart)>=LONG_MS){
-    longFired=true; mode=BLINK; Serial.println("BLINK (long press)");
+
+  // длинное удержание (пока нажато)
+  if (btnStable == 0 and !longFired and (now - tPressStart) >= LONG_MS) {
+    longFired = 1;
+    mode = MODE_BLINK;
   }
 
-  // --- outputs ---
-  if(mode==OFF){ setAll(LOW); }
-  else if(mode==ON){ setAll(HIGH); }
-  else { // BLINK
-    if(now-lastBlink>=BLINK_STEP){ lastBlink=now; static bool on=false; on=!on; setAll(on?HIGH:LOW); }
+  // --- логика режимов ---
+  if (mode == MODE_OFF) {
+    setAll(0);
+  } else if (mode == MODE_ON) {
+    setAll(1);
+  } else {
+    if (now - tBlink >= BLINK_STEP) {
+      tBlink = now;
+      static byte on = 0;
+      on = !on;
+      setAll(on ? 1 : 0);
+    }
   }
 }

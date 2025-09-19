@@ -59,39 +59,63 @@ https://stepik.org/lesson/651743/step/1?unit=648463
 
 ```cpp
 // V1: последовательность без delay()
-byte LEDS[3] = {2, 3, 4};          // пины светодиодов
-unsigned long timer = 0;           // «таймер шага»
-unsigned long STEP = 200;          // интервал в мс
-byte idx = 0;                      // текущий светодиод 0..2
+// ───────────────────────────────────────────────────────────
+// КЛЮЧЕВЫЕ ИДЕИ
+// - Никаких delay(): используем millis() и проверку "пора ли".
+// - Массив LEDS хранит пины; цикл for экономит строки.
+// - (idx + 1) % 3 даёт круговой счётчик 0→1→2→0...
+// ───────────────────────────────────────────────────────────
+
+#define LED_R 2
+#define LED_Y 3
+#define LED_G 4
+
+byte LEDS[3] = { LED_R, LED_Y, LED_G };
+
+unsigned long tStep = 0;   // "время последнего шага"
+unsigned long STEP  = 200; // интервал в миллисекундах
+byte idx = 0;              // текущий светодиод: 0..2
 
 void setup() {
   for (byte i = 0; i < 3; i++) {
     pinMode(LEDS[i], OUTPUT);
-    digitalWrite(LEDS[i], LOW);
+    digitalWrite(LEDS[i], 0);   // погасить все на старте
   }
-  Serial.begin(115200);
 }
 
 void loop() {
-  if (millis() - timer >= STEP) {  // пришло ли время?
-    timer = millis();
-    for (byte i = 0; i < 3; i++) digitalWrite(LEDS[i], LOW); // гасим все
-    digitalWrite(LEDS[idx], HIGH);                            // зажигаем один
-    idx = (idx + 1) % 3;                                      // следующий 0→1→2→0→…
+  unsigned long now = millis();
+
+  // Неблокирующий таймер: если прошло STEP мс — делаем шаг
+  if (now - tStep >= STEP) {
+    tStep = now;
+
+    // 1) Погасить все
+    for (byte i = 0; i < 3; i++) digitalWrite(LEDS[i], 0);
+
+    // 2) Зажечь один
+    digitalWrite(LEDS[idx], 1);
+
+    // 3) Перейти к следующему индексу по кругу:
+    //    (idx + 1) % 3 -> 0,1,2,0,1,2...
+    idx = (idx + 1) % 3;
   }
 }
+
 ```
 
 ### Объяснение
 
 * `millis()` возвращает время от старта в миллисекундах. Сравнивая с `timer`, мы избегаем блокирующих `delay()` и код остаётся «живым».
 * Массив `LEDS[]` избавляет от дублирования кода — можно изменить порядок/количество светодиодов за одну строку.
+* Оператор % — остаток от деления. Остаток при делении на 3 всегда 0,1 или 2.
+* Значит (idx + 1) % 3 «ходит по кругу»: 0→1→2→0→…
 
 ### Задания (V1)
 
 1. **Измени скорость**: сделай `STEP = 80` и `STEP = 600`. Что меняется визуально? Где «комфортная» граница?
 2. **Добавь 4-й светодиод** на D6, расширь массив и логику. Что нужно поменять?
-3. **Обратная последовательность:** попробуй идти 2→1→0→2→… (подсказка: счётчик вниз и модульная арифметика или флаг направления).
+3. **Обратная последовательность:** попробуй идти 2→1→0→2→… (подсказка: счётчик вниз).
 
 ---
 
@@ -102,50 +126,98 @@ void loop() {
 Код:
 
 ```cpp
-const byte LEDS[3] = {2,3,4};
-const byte BTN = 5;                      // кнопка ↔ GND, INPUT_PULLUP
+// V2: кнопка + антидребезг + короткое/длинное
+// ───────────────────────────────────────────────────────────
+// КЛЮЧЕВЫЕ ИДЕИ
+// - INPUT_PULLUP: не нажато = 1, нажато = 0 (инвертированная логика).
+// - Антидребезг: принимаем новое состояние, только если оно
+//   стабильно дольше DEBOUNCE_MS.
+// - Короткое событие обрабатываем по отпусканию (release), чтобы
+//   оно не "догоняло" длинное.
+// ───────────────────────────────────────────────────────────
 
-enum Mode {OFF=0, ON=1, BLINK=2};       // три состояния
-Mode mode = OFF;
+#define LED_R 2
+#define LED_Y 3
+#define LED_G 4
+#define BTN   5
 
-const unsigned long DEBOUNCE=15, LONG_MS=3000, BLINK_STEP=250;
-unsigned long btnLastChange=0, pressStart=0, lastBlink=0;
-bool btnStable=HIGH, btnPrevStable=HIGH, longFired=false; // стабильное и предыдущее состояние
+byte LEDS[3] = { LED_R, LED_Y, LED_G };
 
-void setAll(byte s){ for(byte i=0;i<3;i++) digitalWrite(LEDS[i], s); }
+// Режимы
+#define MODE_OFF   0
+#define MODE_ON    1
+#define MODE_BLINK 2
+byte mode = MODE_OFF;
 
-void setup(){
-  for(byte i=0;i<3;i++){ pinMode(LEDS[i],OUTPUT); digitalWrite(LEDS[i],LOW); }
-  pinMode(BTN, INPUT_PULLUP);
-  Serial.begin(115200);
+// Тайминги
+unsigned long DEBOUNCE_MS = 20;
+unsigned long LONG_MS     = 3000;
+unsigned long BLINK_STEP  = 250;
+
+// Таймеры и состояния
+unsigned long tDebounce   = 0;
+unsigned long tPressStart = 0;
+unsigned long tBlink      = 0;
+byte btnStable = 1;       // 1 = не нажато (INPUT_PULLUP)
+byte btnPrevStable = 1;
+byte longFired = 0;
+
+void setAll(byte s) {
+  for (byte i = 0; i < 3; i++) digitalWrite(LEDS[i], s);
 }
 
-void loop(){
-  unsigned long now=millis();
-  bool raw=digitalRead(BTN);                                  // HIGH=не нажато, LOW=нажато
-  if(raw!=btnStable && (now-btnLastChange)>DEBOUNCE){         // антидребезг
-    btnPrevStable=btnStable; btnStable=raw; btnLastChange=now;
+void setup() {
+  for (byte i = 0; i < 3; i++) { pinMode(LEDS[i], OUTPUT); digitalWrite(LEDS[i], 0); }
+  pinMode(BTN, INPUT_PULLUP);
+}
 
-    if(btnPrevStable==HIGH && btnStable==LOW){                 // нажали
-      pressStart=now; longFired=false;
+void loop() {
+  unsigned long now = millis();
+
+  // --- Чтение кнопки с антидребезгом (фронты) ---
+  byte raw = digitalRead(BTN); // сырое: 1=не нажато, 0=нажато
+  if (raw != btnStable and (now - tDebounce) > DEBOUNCE_MS) {
+    btnPrevStable = btnStable;
+    btnStable = raw;
+    tDebounce = now;
+
+    // Нажали (front: 1 -> 0)
+    if (btnPrevStable == 1 and btnStable == 0) {
+      tPressStart = now;
+      longFired = 0;
     }
-    if(btnPrevStable==LOW && btnStable==HIGH){                 // отпустили
-      if(!longFired){                                         // короткое
-        mode = (mode==OFF)? ON : OFF;
+
+    // Отпустили (front: 0 -> 1)
+    if (btnPrevStable == 0 and btnStable == 1) {
+      if (!longFired) {
+        // Короткое: OFF <-> ON (BLINK тоже сворачиваем в OFF)
+        if (mode == MODE_OFF) mode = MODE_ON;
+        else if (mode == MODE_ON) mode = MODE_OFF;
+        else if (mode == MODE_BLINK) mode = MODE_OFF;
       }
     }
   }
 
-  if(btnStable==LOW && !longFired && (now-pressStart)>=LONG_MS){ // держим долго
-    longFired=true; mode=BLINK;                                 // длинное
+  // --- Длинное удержание (пока держим) ---
+  if (btnStable == 0 and !longFired and (now - tPressStart) >= LONG_MS) {
+    longFired = 1;
+    mode = MODE_BLINK;
   }
 
-  if(mode==OFF){ setAll(LOW); }
-  else if(mode==ON){ setAll(HIGH); }
-  else {                                                       // BLINK
-    if(now-lastBlink>=BLINK_STEP){ lastBlink=now; static bool on=false; on=!on; setAll(on?HIGH:LOW); }
+  // --- Режимы ---
+  if (mode == MODE_OFF) {
+    setAll(0);
+  } else if (mode == MODE_ON) {
+    setAll(1);
+  } else {
+    if (now - tBlink >= BLINK_STEP) {
+      tBlink = now;
+      static byte on = 0; on = !on;
+      setAll(on ? 1 : 0);
+    }
   }
 }
+
 ```
 
 ### Объяснение
@@ -168,94 +240,119 @@ void loop(){
 Код:
 
 ```cpp
+// V3: режимы + функции, чистая архитектура
+// ───────────────────────────────────────────────────────────
+// ФУНКЦИИ
+// - setAll(s): включить/выключить все LED разом.
+// - switchTo(m): аккуратно переключить режим (сбросить таймеры/индексы).
+// - handleButton(): антидребезг + короткое/длинное.
+// - doBlink(): исполнение текущего режима по таймеру.
+// ───────────────────────────────────────────────────────────
+
 #define LED_R 2
 #define LED_Y 3
 #define LED_G 4
 #define BTN   5
+byte LEDS[3] = { LED_R, LED_Y, LED_G };
 
-uint8_t LEDS[3] = { LED_R, LED_Y, LED_G };
-
+// Режимы
 #define MODE_FAST 0
 #define MODE_SLOW 1
 #define MODE_ALL  2
 #define MODE_OFF  3
+byte mode = MODE_FAST;
 
-uint8_t current = MODE_FAST;
+// Тайминги
+unsigned long FAST_STEP = 150;
+unsigned long SLOW_STEP = 600;
+unsigned long ALL_STEP  = 400;
 
-const unsigned long FAST_STEP = 150;   // чуть медленнее для TinkerCad
-const unsigned long SLOW_STEP = 600;
-const unsigned long ALL_STEP  = 400;
+// Таймеры / состояния
+unsigned long tStep = 0;
+unsigned long tDebounce = 0;
+unsigned long tPressStart = 0;
+unsigned long DEBOUNCE_MS = 20;
+unsigned long LONG_MS = 1500;
 
-unsigned long lastStep = 0, btnLast = 0, pressStart = 0;
-uint8_t idx = 0;
+byte idx = 0;                   // индекс активного LED 0..2
+byte btnStable = 1, btnPrevStable = 1, longFired = 0;
 
-bool btnStable = HIGH, btnPrev = HIGH, longFired = false;
-const unsigned long DEBOUNCE = 30;     // ↑ дебаунс
-const unsigned long LONG_MS  = 1500;   // ↓ длительное удержание
-
-void setAll(uint8_t s){ for (uint8_t i=0;i<3;i++) digitalWrite(LEDS[i], s); }
-
-const char* nameOf(uint8_t m){
-  switch (m){
-    case MODE_FAST: return "FAST";
-    case MODE_SLOW: return "SLOW";
-    case MODE_ALL:  return "ALL";
-    default:        return "OFF";
-  }
+void setAll(byte s) {
+  for (byte i = 0; i < 3; i++) digitalWrite(LEDS[i], s);
 }
 
-void switchToMode(uint8_t m){
-  current = m; lastStep = millis(); idx = 0;
-  if (current == MODE_OFF) setAll(LOW);
-  Serial.print("Mode => "); Serial.println(nameOf(current));
+void switchTo(byte m) {
+  mode = m;
+  tStep = millis();
+  idx = 0;
+  if (mode == MODE_OFF) setAll(0);
 }
 
-void handleButton(){
+void handleButton() {
   unsigned long now = millis();
-  bool raw = digitalRead(BTN);                 // INPUT_PULLUP
-  if (raw != btnStable && (now - btnLast) > DEBOUNCE){
-    btnPrev = btnStable; btnStable = raw; btnLast = now;
-    if (btnPrev == HIGH && btnStable == LOW){  // press
-      pressStart = now; longFired = false;
+  byte raw = digitalRead(BTN); // 1=не нажато, 0=нажато
+
+  if (raw != btnStable and (now - tDebounce) > DEBOUNCE_MS) {
+    btnPrevStable = btnStable;
+    btnStable = raw;
+    tDebounce = now;
+
+    // press
+    if (btnPrevStable == 1 and btnStable == 0) {
+      tPressStart = now;
+      longFired = 0;
     }
-    if (btnPrev == LOW && btnStable == HIGH){  // release
-      if (!longFired){                          // короткое → следующий режим
-        if      (current == MODE_FAST) switchToMode(MODE_SLOW);
-        else if (current == MODE_SLOW) switchToMode(MODE_ALL);
-        else if (current == MODE_ALL)  switchToMode(MODE_FAST);
-        else if (current == MODE_OFF)  switchToMode(MODE_FAST);
+
+    // release
+    if (btnPrevStable == 0 and btnStable == 1) {
+      if (!longFired) {
+        if (mode == MODE_FAST) switchTo(MODE_SLOW);
+        else if (mode == MODE_SLOW) switchTo(MODE_ALL);
+        else if (mode == MODE_ALL)  switchTo(MODE_FAST);
+        else if (mode == MODE_OFF)  switchTo(MODE_FAST);
       }
     }
   }
-  if (btnStable == LOW && !longFired && (now - pressStart) >= LONG_MS){ // long
-    longFired = true; switchToMode(MODE_OFF);
+
+  // long
+  if (btnStable == 0 and !longFired and (now - tPressStart) >= LONG_MS) {
+    longFired = 1;
+    switchTo(MODE_OFF);
   }
 }
 
-void doBlink(){
-  if (current == MODE_OFF) return;
+void doBlink() {
+  if (mode == MODE_OFF) return;
   unsigned long now = millis();
-  if (current == MODE_FAST || current == MODE_SLOW){
-    unsigned long step = (current == MODE_FAST) ? FAST_STEP : SLOW_STEP;
-    if (now - lastStep >= step){
-      lastStep = now; setAll(LOW); digitalWrite(LEDS[idx], HIGH); idx = (idx + 1) % 3;
+
+  if (mode == MODE_FAST or mode == MODE_SLOW) {
+    unsigned long step = (mode == MODE_FAST) ? FAST_STEP : SLOW_STEP;
+    if (now - tStep >= step) {
+      tStep = now;
+      setAll(0);
+      digitalWrite(LEDS[idx], 1);
+      idx = (idx + 1) % 3; // круговой индекс через "остаток от деления"
     }
-  } else if (current == MODE_ALL){
-    if (now - lastStep >= ALL_STEP){
-      lastStep = now; static bool on = false; on = !on; setAll(on ? HIGH : LOW);
+  } else if (mode == MODE_ALL) {
+    if (now - tStep >= ALL_STEP) {
+      tStep = now;
+      static byte on = 0; on = !on;
+      setAll(on ? 1 : 0);
     }
   }
 }
 
-void setup(){
-  Serial.begin(9600);                         // под симулятор
-  for (uint8_t i=0;i<3;i++){ pinMode(LEDS[i], OUTPUT); digitalWrite(LEDS[i], LOW); }
+void setup() {
+  for (byte i = 0; i < 3; i++) { pinMode(LEDS[i], OUTPUT); digitalWrite(LEDS[i], 0); }
   pinMode(BTN, INPUT_PULLUP);
-  switchToMode(current);
-  setAll(HIGH); delay(100); setAll(LOW);      // короткий самотест
+  switchTo(mode);
 }
 
-void loop(){ handleButton(); doBlink(); }
+void loop() {
+  handleButton();
+  doBlink();
+}
+
 ```
 
 
@@ -275,81 +372,123 @@ void loop(){ handleButton(); doBlink(); }
 Код:
 
 ```cpp
-/* Пины и режимы */
-const byte LED_R = 2, LED_Y = 3, LED_G = 4, BTN1 = 5;
-const byte LEDS[3] = { LED_R, LED_Y, LED_G };
-const byte MODE_FAST = 0, MODE_SLOW = 1, MODE_ALL = 2, MODE_OFF = 3;
-byte currentMode = MODE_FAST, lastWorkMode = MODE_FAST;
+// V4: мгновенная реакция + OFF-lock + возврат к предыдущему
+// ───────────────────────────────────────────────────────────
+// НОВОЕ
+// - Короткое действие обрабатываем при нажатии (press).
+// - Длинное удержание (>= LONG_MS) → MODE_OFF и ставим offLocked=1.
+// - Следующее нажатие снимает lock и возвращает lastWorkMode.
+// ───────────────────────────────────────────────────────────
 
-/* Тайминги */
-unsigned long lastStepMs = 0;                    // таймер шага
-const unsigned long FAST_STEP=100, SLOW_STEP=500, ALL_STEP=250;
-byte idx = 0;                                     // индекс 0..2
+#define LED_R 2
+#define LED_Y 3
+#define LED_G 4
+#define BTN   5
+byte LEDS[3] = { LED_R, LED_Y, LED_G };
 
-/* Кнопка и дребезг */
-bool btnStable=HIGH, btnPrevStable=HIGH;          // стабильные состояния
-unsigned long btnLastChangeMs=0;                  // таймер дребезга
-const unsigned long DEBOUNCE=15;                  // мс
-bool isLockedOff=false;                            // флаг «залоченного OFF»
-unsigned long pressStartMs=0;                      // момент нажатия
-bool longTriggered=false;                          // сработало ли длинное
+#define MODE_FAST 0
+#define MODE_SLOW 1
+#define MODE_ALL  2
+#define MODE_OFF  3
+byte mode = MODE_FAST;
+byte lastWorkMode = MODE_FAST;
 
-void setAll(byte s){ for(byte i=0;i<3;i++) digitalWrite(LEDS[i], s); }
-const char* modeName(byte m){
-  if(m==MODE_FAST) return "FAST (seq)"; if(m==MODE_SLOW) return "SLOW (seq)";
-  if(m==MODE_ALL) return "ALL (sync)"; return "OFF";
+unsigned long FAST_STEP = 120;
+unsigned long SLOW_STEP = 500;
+unsigned long ALL_STEP  = 250;
+
+unsigned long tStep = 0;
+unsigned long tDebounce = 0;
+unsigned long tPressStart = 0;
+unsigned long DEBOUNCE_MS = 20;
+unsigned long LONG_MS = 3000;
+
+byte idx = 0;
+byte btnStable = 1, btnPrevStable = 1, longFired = 0;
+byte offLocked = 0;
+
+void setAll(byte s) {
+  for (byte i = 0; i < 3; i++) digitalWrite(LEDS[i], s);
 }
 
-void switchToMode(byte m){
-  if(m!=MODE_OFF) lastWorkMode=m;                 // запомним рабочий режим
-  currentMode=m; lastStepMs=millis(); idx=0;
-  if(currentMode==MODE_OFF) setAll(LOW);
-  Serial.print("Mode => "); Serial.println(modeName(currentMode));
+void switchTo(byte m) {
+  if (m != MODE_OFF) lastWorkMode = m;
+  mode = m;
+  tStep = millis();
+  idx = 0;
+  if (mode == MODE_OFF) setAll(0);
 }
 
-void handleButton(){
-  bool raw=digitalRead(BTN1); unsigned long now=millis();
-  if(raw!=btnStable && (now-btnLastChangeMs)>DEBOUNCE){      // фронты с антидребезгом
-    btnPrevStable=btnStable; btnStable=raw; btnLastChangeMs=now;
-    if(btnPrevStable==HIGH && btnStable==LOW){               // нажали → короткое СРАЗУ
-      pressStartMs=now; longTriggered=false;
-      if(!isLockedOff){                                      // обычная работа
-        if(currentMode==MODE_FAST) switchToMode(MODE_SLOW);
-        else if(currentMode==MODE_SLOW) switchToMode(MODE_ALL);
-        else if(currentMode==MODE_ALL) switchToMode(MODE_FAST);
-        else if(currentMode==MODE_OFF) switchToMode(lastWorkMode);
-      } else {                                               // выходим из LOCK OFF
-        isLockedOff=false; switchToMode(lastWorkMode);
+void handleButton() {
+  unsigned long now = millis();
+  byte raw = digitalRead(BTN);
+
+  if (raw != btnStable and (now - tDebounce) > DEBOUNCE_MS) {
+    btnPrevStable = btnStable;
+    btnStable = raw;
+    tDebounce = now;
+
+    // Нажали (короткое — сразу)
+    if (btnPrevStable == 1 and btnStable == 0) {
+      tPressStart = now;
+      longFired = 0;
+
+      if (!offLocked) {
+        if (mode == MODE_FAST) switchTo(MODE_SLOW);
+        else if (mode == MODE_SLOW) switchTo(MODE_ALL);
+        else if (mode == MODE_ALL)  switchTo(MODE_FAST);
+        else if (mode == MODE_OFF)  switchTo(lastWorkMode);
+      } else {
+        // Выход из залоченного OFF
+        offLocked = 0;
+        switchTo(lastWorkMode);
       }
     }
   }
-  if(btnStable==LOW){                                        // удерживаем
-    unsigned long held=now-pressStartMs;
-    if(!longTriggered && held>=3000){                        // длинное ≥3с
-      longTriggered=true; isLockedOff=true; switchToMode(MODE_OFF);
-      Serial.println("Long press >=3s → OFF (locked)");
+
+  // Удержание: длинное
+  if (btnStable == 0) {
+    unsigned long held = now - tPressStart;
+    if (!longFired and held >= LONG_MS) {
+      longFired = 1;
+      offLocked = 1;
+      switchTo(MODE_OFF);
     }
   }
 }
 
-void doBlinkLogic(){
-  if(currentMode==MODE_OFF) return;
-  unsigned long now=millis();
-  if(currentMode==MODE_FAST || currentMode==MODE_SLOW){
-    unsigned long step=(currentMode==MODE_FAST)?FAST_STEP:SLOW_STEP;
-    if(now-lastStepMs>=step){ lastStepMs=now; setAll(LOW); digitalWrite(LEDS[idx],HIGH); idx=(idx+1)%3; }
-  } else if(currentMode==MODE_ALL){
-    if(now-lastStepMs>=ALL_STEP){ lastStepMs=now; static bool on=false; on=!on; setAll(on?HIGH:LOW); }
+void doBlink() {
+  if (mode == MODE_OFF) return;
+  unsigned long now = millis();
+
+  if (mode == MODE_FAST or mode == MODE_SLOW) {
+    unsigned long step = (mode == MODE_FAST) ? FAST_STEP : SLOW_STEP;
+    if (now - tStep >= step) {
+      tStep = now;
+      setAll(0);
+      digitalWrite(LEDS[idx], 1);
+      idx = (idx + 1) % 3;
+    }
+  } else if (mode == MODE_ALL) {
+    if (now - tStep >= ALL_STEP) {
+      tStep = now;
+      static byte on = 0; on = !on;
+      setAll(on ? 1 : 0);
+    }
   }
 }
 
-void setup(){
-  Serial.begin(115200);
-  pinMode(LED_R,OUTPUT); pinMode(LED_Y,OUTPUT); pinMode(LED_G,OUTPUT);
-  pinMode(BTN1, INPUT_PULLUP); setAll(LOW); switchToMode(currentMode);
+void setup() {
+  for (byte i = 0; i < 3; i++) { pinMode(LEDS[i], OUTPUT); digitalWrite(LEDS[i], 0); }
+  pinMode(BTN, INPUT_PULLUP);
+  switchTo(mode);
 }
 
-void loop(){ handleButton(); doBlinkLogic(); }
+void loop() {
+  handleButton();
+  doBlink();
+}
+
 ```
 
 ### Чем V4 отличается от V3
@@ -384,21 +523,24 @@ void loop(){ handleButton(); doBlinkLogic(); }
 
 ---
 
-## Приложение А — Мини‑шаблоны (часто пригодятся)
+## Приложение А — Мини-шаблоны (часто пригодятся)
 
 **Неблокирующий шаг по таймеру:**
 
 ```cpp
-unsigned long t=0; const unsigned long STEP=200;
+unsigned long t=0; 
+unsigned long STEP=200;
 if (millis()-t >= STEP) { t = millis(); /* действие */ }
 ```
 
 **Антидребезг на фронты:**
 
 ```cpp
-bool stable=HIGH, prev=HIGH; unsigned long last=0; const unsigned long DEBOUNCE=15;
-bool raw=digitalRead(BTN);
-if (raw!=stable && (millis()-last)>DEBOUNCE) { prev=stable; stable=raw; last=millis(); /* обработка фронтов */ }
+byte stable = 1, prev = 1; unsigned long last = 0; unsigned long DEB = 20;
+byte raw = digitalRead(BTN);
+if (raw != stable and (millis() - last) > DEB) {
+  prev = stable; stable = raw; last = millis(); /* обрабатываем press/release */
+}
 ```
 
 **Перебор массива пинов:**

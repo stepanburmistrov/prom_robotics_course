@@ -1,108 +1,106 @@
-
+// V3: режимы + функции, единый стиль
 #define LED_R 2
 #define LED_Y 3
 #define LED_G 4
 #define BTN   5
+byte LEDS[3] = { LED_R, LED_Y, LED_G };
 
-uint8_t LEDS[3] = { LED_R, LED_Y, LED_G };
-
+// Режимы
 #define MODE_FAST 0
 #define MODE_SLOW 1
 #define MODE_ALL  2
 #define MODE_OFF  3
+byte mode = MODE_FAST;
 
-uint8_t current = MODE_FAST;
+// Тайминги
+unsigned long FAST_STEP = 150;
+unsigned long SLOW_STEP = 600;
+unsigned long ALL_STEP  = 400;
 
-const unsigned long FAST_STEP = 150;   // было 100
-const unsigned long SLOW_STEP = 600;   // было 500
-const unsigned long ALL_STEP  = 400;   // было 250
+unsigned long tStep      = 0;  // общий таймер шагов
+unsigned long tDebounce  = 0;
+unsigned long tPressStart= 0;
 
-unsigned long lastStep = 0, btnLast = 0, pressStart = 0;
-uint8_t idx = 0;
+unsigned long DEBOUNCE_MS = 20;
+unsigned long LONG_MS     = 1500;
 
-bool btnStable = HIGH, btnPrev = HIGH, longFired = false;
-const unsigned long DEBOUNCE = 30;
-const unsigned long LONG_MS  = 1500; 
+byte idx = 0;                  // индекс активного светодиода 0..2
+byte btnStable = 1, btnPrevStable = 1, longFired = 0;
 
-void setAll(uint8_t s){ for (uint8_t i=0;i<3;i++) digitalWrite(LEDS[i], s); }
-
-const char* nameOf(uint8_t m){
-  switch (m){
-    case MODE_FAST: return "FAST";
-    case MODE_SLOW: return "SLOW";
-    case MODE_ALL:  return "ALL";
-    default:        return "OFF";
-  }
+void setAll(byte s) {
+  for (byte i = 0; i < 3; i++) digitalWrite(LEDS[i], s);
 }
 
-void switchToMode(uint8_t m){
-  current = m; lastStep = millis(); idx = 0;
-  if (current == MODE_OFF) setAll(LOW);
-  Serial.print("Mode => "); Serial.println(nameOf(current));
+void switchTo(byte m) {
+  mode = m;
+  tStep = millis();
+  idx = 0;
+  if (mode == MODE_OFF) setAll(0);
 }
 
-void handleButton(){
+void handleButton() {
   unsigned long now = millis();
-  bool raw = digitalRead(BTN);        // INPUT_PULLUP: не нажато=HIGH, нажато=LOW
+  byte raw = digitalRead(BTN); // 1 = не нажато, 0 = нажато
 
-  // антидребезг
-  if (raw != btnStable && (now - btnLast) > DEBOUNCE){
-    btnPrev = btnStable; btnStable = raw; btnLast = now;
+  if (raw != btnStable and (now - tDebounce) > DEBOUNCE_MS) {
+    btnPrevStable = btnStable;
+    btnStable = raw;
+    tDebounce = now;
 
-    if (btnPrev == HIGH && btnStable == LOW){    // press
-      pressStart = now; longFired = false;
-      Serial.println("PRESS");
+    // press
+    if (btnPrevStable == 1 and btnStable == 0) {
+      tPressStart = now;
+      longFired = 0;
     }
-    if (btnPrev == LOW && btnStable == HIGH){    // release
-      Serial.println("RELEASE");
-      if (!longFired){
-        if      (current == MODE_FAST) switchToMode(MODE_SLOW);
-        else if (current == MODE_SLOW) switchToMode(MODE_ALL);
-        else if (current == MODE_ALL)  switchToMode(MODE_FAST);
-        else if (current == MODE_OFF)  switchToMode(MODE_FAST);
+
+    // release
+    if (btnPrevStable == 0 and btnStable == 1) {
+      if (!longFired) {
+        // короткое: переключаем режим по кругу
+        if (mode == MODE_FAST) switchTo(MODE_SLOW);
+        else if (mode == MODE_SLOW) switchTo(MODE_ALL);
+        else if (mode == MODE_ALL)  switchTo(MODE_FAST);
+        else if (mode == MODE_OFF)  switchTo(MODE_FAST);
       }
     }
   }
 
   // длинное удержание
-  if (btnStable == LOW && !longFired && (now - pressStart) >= LONG_MS){
-    longFired = true;
-    switchToMode(MODE_OFF);
-    Serial.println("LONG >= 1.5s -> OFF");
+  if (btnStable == 0 and !longFired and (now - tPressStart) >= LONG_MS) {
+    longFired = 1;
+    switchTo(MODE_OFF);
   }
 }
 
-void doBlink(){
-  if (current == MODE_OFF) return;
-
+void doBlink() {
+  if (mode == MODE_OFF) return;
   unsigned long now = millis();
-  if (current == MODE_FAST || current == MODE_SLOW){
-    unsigned long step = (current == MODE_FAST) ? FAST_STEP : SLOW_STEP;
-    if (now - lastStep >= step){
-      lastStep = now;
-      setAll(LOW);
-      digitalWrite(LEDS[idx], HIGH);
-      idx = (idx + 1) % 3;
+
+  if (mode == MODE_FAST or mode == MODE_SLOW) {
+    unsigned long step = (mode == MODE_FAST) ? FAST_STEP : SLOW_STEP;
+    if (now - tStep >= step) {
+      tStep = now;
+      setAll(0);
+      digitalWrite(LEDS[idx], 1);
+      idx = (idx + 1) % 3; 
     }
-  } else if (current == MODE_ALL){
-    if (now - lastStep >= ALL_STEP){
-      lastStep = now;
-      static bool on = false; on = !on;
-      setAll(on ? HIGH : LOW);
+  } else if (mode == MODE_ALL) {
+    if (now - tStep >= ALL_STEP) {
+      tStep = now;
+      static byte on = 0;
+      on = !on;
+      setAll(on ? 1 : 0);
     }
   }
 }
 
-void setup(){
-  Serial.begin(9600);                  // 9600 — стабильнее для TinkerCad
-  for (uint8_t i=0;i<3;i++){ pinMode(LEDS[i], OUTPUT); digitalWrite(LEDS[i], LOW); }
-  pinMode(BTN, INPUT_PULLUP);          // кнопка к GND!
-  switchToMode(current);
-
-  setAll(HIGH); delay(100); setAll(LOW);
+void setup() {
+  for (byte i = 0; i < 3; i++) { pinMode(LEDS[i], OUTPUT); digitalWrite(LEDS[i], 0); }
+  pinMode(BTN, INPUT_PULLUP);
+  switchTo(mode);
 }
 
-void loop(){
+void loop() {
   handleButton();
   doBlink();
 }
