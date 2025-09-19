@@ -4,9 +4,9 @@ int redPin    = 2;  // Пин красного светодиода
 int buttonPin = 5;  // Пин кнопки (кнопка между D5 и GND, включим INPUT_PULLUP)
 
 // Таймеры для каждого независимого процесса мигания/дребезга.
-long timerRed   = 0;
-long timerYellow= 0;
-long timerGreen = 0;
+unsigned long timerRed   = 0;
+unsigned long timerYellow= 0;
+unsigned long timerGreen = 0;
 
 // Переменные для логики кнопки
 int button = 0;          // Текущее состояние кнопки после инверсии (!digitalRead)
@@ -38,13 +38,13 @@ void loop()
 
   button = !digitalRead(buttonPin);
 
-  if (millis() - timerGreen > 5 and button == 1 and buttonPressed == 0) {
+  if (millis() - timerGreen > 20 and button == 1 and buttonPressed == 0) {
     digitalWrite(greenPin, !digitalRead(greenPin)); // Однократное переключение при нажатии
     timerGreen = millis();  // Сбрасываем таймер антидребезга
     buttonPressed = 1;      // Фиксируем, что мы уже обработали «нажатое» состояние
   }
 
-  if (millis() - timerGreen > 5 and button == 0 and buttonPressed == 1) {
+  if (millis() - timerGreen > 20 and button == 0 and buttonPressed == 1) {
     timerGreen = millis();  // Снова сброс таймера для стабильности
     buttonPressed = 0;      // Разрешаем обработку следующего нажатия
   }
